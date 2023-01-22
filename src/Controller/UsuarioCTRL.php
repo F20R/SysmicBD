@@ -2,7 +2,121 @@
 
 namespace App\Controller;
 
-class UsuarioCTRL
+use App\Entity\ApiKeyETT;
+use App\Entity\RolETT;
+use App\Entity\UsuarioETT;
+use App\Repository\UsuarioRPY;
+use App\Utilidades\Utils;
+use Doctrine\Persistence\ManagerRegistry;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
+
+class UsuarioCTRL extends AbstractController
 {
+
+    private ManagerRegistry $doctrine;
+
+    public function __construct(ManagerRegistry $managerRegistry)
+    {
+        $this-> doctrine = $managerRegistry;
+    }
+
+
+    #[Route('/usuario', name: 'app_usuario')]
+    public function index(): JsonResponse
+    {
+        return $this->json([
+            'message' => 'Welcome to your new controller!',
+            'path' => 'src/Controller/UsuarioController.php',
+        ]);
+    }
+
+    #[Route('/usuario/list', name: 'app_usuario_listar', methods: ['GET'])]
+    public function listar(UsuarioRepository $usuarioRepository, Utils $utilidades): JsonResponse
+    {
+        $listUsuarios= $usuarioRepository->findAll();
+
+        $listJson = $utilidades->toJson($listUsuarios,["user_query"]);
+
+        return new JsonResponse($listJson, 200,[],true);
+
+    }
+
+    #[Route('/usuario/buscar', name: 'app_usuario_buscar', methods: ['GET'])]
+    public function buscarPorNombre(UsuarioRepository $usuarioRepository,
+                                    Utils $utilidades,
+                                    Request $request): JsonResponse
+    {
+        $nombre = $request->query->get("nombre");
+
+        $parametrosBusqueda = array(
+            'username' => $nombre
+        );
+
+        $listUsuarios = $usuarioRepository->findBy($parametrosBusqueda);
+
+        $listJson = $utilidades->toJson($listUsuarios, null);
+
+        return new JsonResponse($listJson, 200,[],true);
+
+    }
+
+
+    #[Route('/usuario/save', name: 'app_usuario_crear', methods: ['POST'])]
+    public function save(Request $request, Utils $utils): JsonResponse
+    {
+
+        //CARGA DATOS
+        $em = $this-> doctrine->getManager();
+        $userRepository = $em->getRepository(Usuario::class);
+        $rolRepository = $em->getRepository(Rol::class);
+        $apiKeyRepository = $em->getRepository(ApiKey::class);
+
+
+        //Obtener Json del body
+        $json  = json_decode($request->getContent(), true);
+
+        //Obtenemos los parámetros del JSON
+        $username = $json['username'];
+        $password = $json['password'];
+        $rolname = $json['rol'];
+
+        //CREAR NUEVO USUARIO A PARTIR DEL JSON
+        if($username != null and $password != null) {
+            $usuarioNuevo = new Usuario();
+            $usuarioNuevo->setUsername($username);
+            $usuarioNuevo->setPassword($utils->hashPassword($password));
+
+            //GESTION DEL ROL
+            if ($rolname == null) {
+                //Obtenemos el rol de usuario por defecto
+                $rolUser = $rolRepository->findOneByIdentificador("USER");
+                $usuarioNuevo->setRol($rolUser);
+
+            } else {
+                $rol = $rolRepository->findOneByIdentificador($rolname);
+                $usuarioNuevo->setRol($rol);
+            }
+
+            //GUARDAR
+            $userRepository->save($usuarioNuevo, true);
+
+
+            $utils-> generateApiToken($usuarioNuevo,$apiKeyRepository);
+
+            return new JsonResponse("{ mensaje: Usuario creado correctamente }", 200, [], true);
+        }else{
+            return new JsonResponse("{ mensaje: No ha indicado usario y contraseña }", 101, [], true);
+        }
+
+    }
+
+
+
+
+
+
 
 }
